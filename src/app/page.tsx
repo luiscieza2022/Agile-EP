@@ -4,11 +4,14 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import NuevoPrestamoForm from '@/components/NuevoPrestamoForm';
 import CobroSplitModal from '@/components/CobroSplitModal';
+import LoginForm from '@/components/LoginForm';
 
 const SEDES = ['Chimbote', 'Trujillo', 'Chiclayo', 'Tumbes', 'Piura'] as const;
 
 export default function HomePage() {
   const [darkMode, setDarkMode] = useState(false);
+  const [cajeroActual, setCajeroActual] = useState<any | null>(null);
+
   const [clientes, setClientes] = useState<any[]>([]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState<any | null>(null);
   const [cuotas, setCuotas] = useState<any[]>([]);
@@ -49,8 +52,10 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    cargarClientes();
-  }, []);
+    if (cajeroActual) {
+      cargarClientes();
+    }
+  }, [cajeroActual]);
 
   const handleCrearCliente = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,13 +85,32 @@ export default function HomePage() {
     ? 'bg-gray-800 text-white border-gray-600 placeholder-gray-400 focus:bg-gray-700'
     : 'bg-white text-gray-900 border-gray-300 placeholder-gray-500 focus:bg-gray-50';
 
+  // Si no hay cajero autenticado, muestra la pantalla de inicio de sesión
+  if (!cajeroActual) {
+    return (
+      <main className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-100'}`}>
+        <div className="absolute top-4 right-4">
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className={`px-3 py-1.5 rounded-lg font-bold text-xs border transition-all ${
+              darkMode ? 'bg-gray-800 text-amber-300 border-gray-700' : 'bg-white text-gray-800 border-gray-300'
+            }`}
+          >
+            {darkMode ? '☀️ Modo Claro' : '🌙 Modo Oscuro'}
+          </button>
+        </div>
+        <LoginForm onLoginSuccess={(cajero) => setCajeroActual(cajero)} darkMode={darkMode} />
+      </main>
+    );
+  }
+
   return (
     <main
       className={`min-h-screen p-6 space-y-6 transition-colors duration-200 ${
         darkMode ? 'bg-gray-900 text-gray-100' : 'bg-gray-100 text-gray-900'
       }`}
     >
-      {/* Header con Toggle Modo Oscuro */}
+      {/* Header con Info del Cajero Autenticado */}
       <header
         className={`p-6 rounded-lg shadow-sm border flex justify-between items-center ${
           darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
@@ -95,19 +119,28 @@ export default function HomePage() {
         <div>
           <h1 className="text-2xl font-bold">Sistema de Préstamos Presenciales</h1>
           <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            Gestión de créditos empresariales por sede, pago flexible y alertas de riesgo
+            Cajero en turno: <strong className="text-blue-500">{cajeroActual.nombre_completo}</strong> (DNI: {cajeroActual.dni}) | Sede: <span className="font-bold text-green-500">{cajeroActual.sede}</span>
           </p>
         </div>
-        <button
-          onClick={() => setDarkMode(!darkMode)}
-          className={`px-4 py-2 rounded-lg font-bold text-sm border transition-all flex items-center space-x-2 ${
-            darkMode
-              ? 'bg-gray-700 text-amber-300 border-gray-600 hover:bg-gray-600'
-              : 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200'
-          }`}
-        >
-          <span>{darkMode ? '☀️ Modo Claro' : '🌙 Modo Oscuro'}</span>
-        </button>
+
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => setDarkMode(!darkMode)}
+            className={`px-3 py-2 rounded-lg font-bold text-xs border transition-all ${
+              darkMode
+                ? 'bg-gray-700 text-amber-300 border-gray-600 hover:bg-gray-600'
+                : 'bg-gray-100 text-gray-800 border-gray-300 hover:bg-gray-200'
+            }`}
+          >
+            {darkMode ? '☀️ Claro' : '🌙 Oscuro'}
+          </button>
+          <button
+            onClick={() => setCajeroActual(null)}
+            className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg font-bold text-xs transition-colors"
+          >
+            Cerrar Sesión
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -239,7 +272,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Columna Derecha: Detalle de Empresa y Operaciones */}
+        {/* Columna Derecha: Operaciones */}
         <section className="lg:col-span-2 space-y-6">
           {clienteSeleccionado ? (
             <>
