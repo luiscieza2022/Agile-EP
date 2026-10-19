@@ -77,7 +77,7 @@ export default function LoginForm({ onLoginSuccess, darkMode }: Props) {
               maxLength={8}
               value={dni}
               onChange={(e) => setDni(e.target.value)}
-              placeholder="Ej: 72345678"
+              placeholder="Numero de DNI"
               className={`w-full p-3 border rounded-lg font-medium text-base ${inputStyle}`}
               required
             />
