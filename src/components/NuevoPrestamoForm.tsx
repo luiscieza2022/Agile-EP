@@ -5,23 +5,27 @@ import { registrarPrestamo } from '@/lib/loans';
 
 interface Props {
   clienteId: string;
-  nombreCliente: string;
+  nombreEmpresa: string;
+  representanteNombre: string;
+  sede: 'Chimbote' | 'Trujillo' | 'Chiclayo' | 'Tumbes' | 'Piura';
   saldoDisponible: number;
   onSuccess: () => void;
 }
 
-const SEDES = ['Chimbote', 'Trujillo', 'Chiclayo', 'Tumbes', 'Piura'] as const;
-
-export default function NuevoPrestamoForm({ clienteId, nombreCliente, saldoDisponible, onSuccess }: Props) {
-  const [sede, setSede] = useState<typeof SEDES[number]>('Trujillo');
+export default function NuevoPrestamoForm({
+  clienteId,
+  nombreEmpresa,
+  representanteNombre,
+  sede,
+  saldoDisponible,
+  onSuccess,
+}: Props) {
   const [monto, setMonto] = useState<number>(1000);
   const [plazo, setPlazo] = useState<number>(12);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Cálculos en tiempo real para mostrar al usuario
-  const interes = 30; // 30%
-  const montoTotalConInteres = monto * 1.30;
+  const montoTotalConInteres = monto * 1.3;
   const cuotaMensual = (montoTotalConInteres / (plazo || 1)).toFixed(2);
   const excedeLimite = monto > saldoDisponible;
 
@@ -52,31 +56,23 @@ export default function NuevoPrestamoForm({ clienteId, nombreCliente, saldoDispo
 
   return (
     <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md border space-y-4">
-      <h2 className="text-xl font-bold text-gray-800">Nuevo Préstamo - {nombreCliente}</h2>
-      
+      <div className="border-b pb-3">
+        <h2 className="text-xl font-bold text-gray-800">Nuevo Préstamo - {nombreEmpresa}</h2>
+        <p className="text-sm text-gray-600">
+          Atendido por: <strong>{representanteNombre}</strong> | Sede: <span className="font-semibold text-blue-700">{sede}</span>
+        </p>
+      </div>
+
       {error && (
         <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-700 text-sm">
           {error}
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700">Sede Presencial</label>
-          <select
-            value={sede}
-            onChange={(e) => setSede(e.target.value as any)}
-            className="mt-1 block w-full p-2 border rounded-md"
-          >
-            {SEDES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-        </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700">
-            Monto del Préstamo (Máx disponible: S/ {saldoDisponible.toFixed(2)})
+            Monto a Prestar (Máx disp: S/ {saldoDisponible.toFixed(2)})
           </label>
           <input
             type="number"
@@ -113,13 +109,12 @@ export default function NuevoPrestamoForm({ clienteId, nombreCliente, saldoDispo
         </div>
       </div>
 
-      {/* Resumen del Préstamo */}
       <div className="bg-blue-50 p-4 rounded-md space-y-1 text-sm text-blue-900">
         <p><strong>Monto Total a Devolver (con 30%):</strong> S/ {montoTotalConInteres.toFixed(2)}</p>
         <p><strong>Valor por Cuota Mensual:</strong> S/ {cuotaMensual} ({plazo} meses)</p>
         {monto === saldoDisponible && (
           <p className="text-amber-700 font-medium mt-1">
-            ⚠️ Al aprobar este monto, el cliente alcanzará el límite total de S/ 10,000
+            ⚠️ Al aprobar este monto, el cliente alcanzará el límite total de S/ 10,000 y se reportará internamente como Transacción Sospechosa.
           </p>
         )}
       </div>
