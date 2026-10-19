@@ -12,9 +12,10 @@ export default function HomePage() {
   const [cuotaACobrar, setCuotaACobrar] = useState<any | null>(null);
   const [verModalNuevo, setVerModalNuevo] = useState(false);
 
-  // Formulario de creación de cliente
+  // Formulario para registro de empresa cliente con representante
   const [nombre, setNombre] = useState('');
   const [documento, setDocumento] = useState('');
+  const [representante, setRepresentante] = useState('');
 
   const cargarClientes = async () => {
     const { data } = await supabase.from('vista_resumen_cliente').select('*');
@@ -47,11 +48,18 @@ export default function HomePage() {
 
   const handleCrearCliente = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombre || !documento) return;
+    if (!nombre || !documento || !representante) return;
 
-    await supabase.from('clientes').insert([{ nombre_o_razon_social: nombre, documento_identidad: documento }]);
+    await supabase.from('clientes').insert([
+      { 
+        nombre_o_razon_social: nombre, 
+        documento_identidad: documento,
+        representante_nombre: representante 
+      }
+    ]);
     setNombre('');
     setDocumento('');
+    setRepresentante('');
     cargarClientes();
   };
 
@@ -60,19 +68,19 @@ export default function HomePage() {
       <header className="bg-white p-6 rounded-lg shadow-sm border flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Sistema de Préstamos Presenciales</h1>
-          <p className="text-sm text-gray-500">Gestión de créditos, cobro flexible (1 o 2 medios de pago) y alertas de riesgo</p>
+          <p className="text-sm text-gray-500">Gestión de créditos empresariales por sede, pago flexible y alertas de riesgo</p>
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Columna 1: Registro y Listado de Clientes */}
+        {/* Columna 1: Registro y Listado de Empresas Afiliadas */}
         <section className="bg-white p-5 rounded-lg shadow-sm border space-y-4">
-          <h2 className="text-lg font-semibold text-gray-800">Clientes Registrados</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Empresas Afiliadas</h2>
           
           <form onSubmit={handleCrearCliente} className="space-y-2 border-b pb-4">
             <input
               type="text"
-              placeholder="Razón Social / Nombre"
+              placeholder="Razón Social / Empresa"
               value={nombre}
               onChange={(e) => setNombre(e.target.value)}
               className="w-full p-2 border rounded-md text-sm"
@@ -80,14 +88,22 @@ export default function HomePage() {
             />
             <input
               type="text"
-              placeholder="DNI / RUC"
+              placeholder="RUC / DNI"
               value={documento}
               onChange={(e) => setDocumento(e.target.value)}
               className="w-full p-2 border rounded-md text-sm"
               required
             />
+            <input
+              type="text"
+              placeholder="Representante / Dueño / Encargado"
+              value={representante}
+              onChange={(e) => setRepresentante(e.target.value)}
+              className="w-full p-2 border rounded-md text-sm"
+              required
+            />
             <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-md text-sm font-medium">
-              + Registrar Cliente
+              + Afiliar Nueva Empresa
             </button>
           </form>
 
@@ -110,7 +126,8 @@ export default function HomePage() {
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-bold text-gray-800 text-sm">{c.nombre_o_razon_social}</p>
-                      <p className="text-xs text-gray-500">Doc: {c.documento_identidad}</p>
+                      <p className="text-xs text-blue-700 font-semibold">Rep: {c.representante_nombre || 'No asignado'}</p>
+                      <p className="text-xs text-gray-500">RUC/DNI: {c.documento_identidad}</p>
                     </div>
                     {esSospechoso && (
                       <span className="bg-red-100 text-red-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-red-300">
@@ -135,6 +152,7 @@ export default function HomePage() {
               <div className="bg-white p-5 rounded-lg shadow-sm border flex justify-between items-center">
                 <div>
                   <h2 className="text-xl font-bold text-gray-800">{clienteSeleccionado.nombre_o_razon_social}</h2>
+                  <p className="text-xs text-blue-800 font-semibold">Contacto/Representante: {clienteSeleccionado.representante_nombre || 'No especificado'}</p>
                   <p className="text-sm text-gray-500">Límite disponible: S/ {parseFloat(clienteSeleccionado.saldo_disponible_prestamo).toFixed(2)}</p>
                 </div>
                 <button
@@ -149,7 +167,7 @@ export default function HomePage() {
               {verModalNuevo && (
                 <NuevoPrestamoForm
                   clienteId={clienteSeleccionado.cliente_id}
-                  nombreCliente={clienteSeleccionado.nombre_o_razon_social}
+                  nombreCliente={`${clienteSeleccionado.nombre_o_razon_social} (${clienteSeleccionado.representante_nombre})`}
                   saldoDisponible={parseFloat(clienteSeleccionado.saldo_disponible_prestamo)}
                   onSuccess={() => {
                     setVerModalNuevo(false);
@@ -159,11 +177,11 @@ export default function HomePage() {
                 />
               )}
 
-              {/* Cronograma y Cobro */}
+              {/* Cronograma de Cuotas */}
               <div className="bg-white p-5 rounded-lg shadow-sm border space-y-4">
                 <h3 className="text-md font-bold text-gray-800">Cronograma de Cuotas</h3>
                 {cuotas.length === 0 ? (
-                  <p className="text-sm text-gray-500">El cliente no tiene cuotas o préstamos activos.</p>
+                  <p className="text-sm text-gray-500">La empresa no tiene cuotas o préstamos activos registrados.</p>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-sm text-gray-600">
@@ -213,13 +231,13 @@ export default function HomePage() {
             </>
           ) : (
             <div className="bg-white p-12 rounded-lg shadow-sm border text-center text-gray-500">
-              Selecciona o crea un cliente para gestionar préstamos y registrar pagos.
+              Selecciona o registra una empresa afiliada para emitir préstamos y realizar cobros.
             </div>
           )}
         </section>
       </div>
 
-      {/* Modal de Pago (Soporta 1 o 2 Métodos de Pago) */}
+      {/* Modal de Cobro (1 o 2 Métodos de Pago) */}
       {cuotaACobrar && (
         <CobroSplitModal
           cuotaId={cuotaACobrar.id}
