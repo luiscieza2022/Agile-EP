@@ -9,6 +9,7 @@ interface Props {
   representanteNombre: string;
   sede: 'Chimbote' | 'Trujillo' | 'Chiclayo' | 'Tumbes' | 'Piura';
   saldoDisponible: number;
+  darkMode: boolean;
   onSuccess: () => void;
 }
 
@@ -18,6 +19,7 @@ export default function NuevoPrestamoForm({
   representanteNombre,
   sede,
   saldoDisponible,
+  darkMode,
   onSuccess,
 }: Props) {
   const [monto, setMonto] = useState<number>(1000);
@@ -54,24 +56,34 @@ export default function NuevoPrestamoForm({
     }
   };
 
+  const inputStyle = darkMode
+    ? 'bg-gray-700 text-white border-gray-600 placeholder-gray-400 focus:bg-gray-600'
+    : 'bg-white text-gray-900 border-gray-300 placeholder-gray-500 focus:bg-gray-50';
+
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow-md border space-y-4">
+    <form
+      onSubmit={handleSubmit}
+      className={`p-6 rounded-lg shadow-md border space-y-4 ${
+        darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'
+      }`}
+    >
       <div className="border-b pb-3">
-        <h2 className="text-xl font-bold text-gray-800">Nuevo Préstamo - {nombreEmpresa}</h2>
-        <p className="text-sm text-gray-600">
-          Atendido por: <strong>{representanteNombre}</strong> | Sede: <span className="font-semibold text-blue-700">{sede}</span>
+        <h2 className="text-xl font-bold">Nuevo Préstamo - {nombreEmpresa}</h2>
+        <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+          Atendido por: <strong>{representanteNombre}</strong> | Sede:{' '}
+          <span className="font-semibold text-blue-500">{sede}</span>
         </p>
       </div>
 
       {error && (
-        <div className="bg-red-50 border-l-4 border-red-500 p-3 text-red-700 text-sm">
+        <div className="bg-red-500/10 border-l-4 border-red-500 p-3 text-red-500 text-sm">
           {error}
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700">
+          <label className={`block text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
             Monto a Prestar (Máx disp: S/ {saldoDisponible.toFixed(2)})
           </label>
           <input
@@ -80,41 +92,57 @@ export default function NuevoPrestamoForm({
             max="10000"
             value={monto}
             onChange={(e) => setMonto(Number(e.target.value))}
-            className={`mt-1 block w-full p-2 border rounded-md ${excedeLimite ? 'border-red-500 bg-red-50' : ''}`}
+            className={`mt-1 block w-full p-2.5 border rounded-md font-semibold text-base ${inputStyle} ${
+              excedeLimite ? 'border-red-500 bg-red-500/10' : ''
+            }`}
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Plazo (Meses: 1 a 60)</label>
+          <label className={`block text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+            Plazo (Meses: 1 a 60)
+          </label>
           <input
             type="number"
             min="1"
             max="60"
             value={plazo}
             onChange={(e) => setPlazo(Number(e.target.value))}
-            className="mt-1 block w-full p-2 border rounded-md"
+            className={`mt-1 block w-full p-2.5 border rounded-md font-semibold text-base ${inputStyle}`}
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Tasa de Interés</label>
+          <label className={`block text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+            Tasa de Interés
+          </label>
           <input
             type="text"
             value="30% Fijo"
             disabled
-            className="mt-1 block w-full p-2 border bg-gray-100 rounded-md text-gray-600 font-semibold"
+            className={`mt-1 block w-full p-2.5 border rounded-md font-bold text-base ${
+              darkMode ? 'bg-gray-700 text-gray-300 border-gray-600' : 'bg-gray-100 text-gray-800 border-gray-300'
+            }`}
           />
         </div>
       </div>
 
-      <div className="bg-blue-50 p-4 rounded-md space-y-1 text-sm text-blue-900">
-        <p><strong>Monto Total a Devolver (con 30%):</strong> S/ {montoTotalConInteres.toFixed(2)}</p>
-        <p><strong>Valor por Cuota Mensual:</strong> S/ {cuotaMensual} ({plazo} meses)</p>
+      <div
+        className={`p-4 rounded-md space-y-1 text-sm ${
+          darkMode ? 'bg-blue-950/50 text-blue-200 border border-blue-800' : 'bg-blue-50 text-blue-900'
+        }`}
+      >
+        <p>
+          <strong>Monto Total a Devolver (con 30%):</strong> S/ {montoTotalConInteres.toFixed(2)}
+        </p>
+        <p>
+          <strong>Valor por Cuota Mensual:</strong> S/ {cuotaMensual} ({plazo} meses)
+        </p>
         {monto === saldoDisponible && (
-          <p className="text-amber-700 font-medium mt-1">
-            ⚠️ Al aprobar este monto, el cliente alcanzará el límite total de S/ 10,000 y se reportará internamente como Transacción Sospechosa.
+          <p className="text-amber-500 font-medium mt-1">
+            ⚠️ Al aprobar este monto, la empresa alcanzará el límite total de S/ 10,000 y se reportará internamente como Transacción Sospechosa.
           </p>
         )}
       </div>
@@ -122,7 +150,7 @@ export default function NuevoPrestamoForm({
       <button
         type="submit"
         disabled={loading || excedeLimite}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md disabled:bg-gray-400"
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-md disabled:bg-gray-500 transition-colors"
       >
         {loading ? 'Procesando Desembolso...' : 'Aprobar y Registrar Préstamo'}
       </button>
