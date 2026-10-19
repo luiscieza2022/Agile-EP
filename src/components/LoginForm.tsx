@@ -107,9 +107,8 @@ export default function LoginForm({ onLoginSuccess, darkMode }: Props) {
         </form>
 
         <div className={`p-3 rounded-lg text-xs space-y-1 ${darkMode ? 'bg-gray-900/50 text-gray-400' : 'bg-gray-50 text-gray-600'}`}>
-          <p className="font-bold text-blue-500">Credenciales de prueba:</p>
-          <p>• DNI: <strong>72345678</strong> (Juan Pérez - Sede Trujillo)</p>
-          <p>• Contraseña: <strong>Banco12345</strong></p>
+          <p>Si olvidaste tu contraseña, contacta al administrador del sistema.</p>
+          <p>Recuerda que tu DNI es único y no debe compartirse con nadie.</p>
         </div>
       </div>
     </div>
