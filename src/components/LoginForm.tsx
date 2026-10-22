@@ -28,7 +28,7 @@ export default function LoginForm({ onLoginSuccess, darkMode }: Props) {
     setLoading(false);
 
     if (dbError || !cajero) {
-      setError('DNI no registrado o contraseña incorrecta.');
+      setError('Codigo no registrado o contraseña incorrecta.');
       return;
     }
 
@@ -55,9 +55,9 @@ export default function LoginForm({ onLoginSuccess, darkMode }: Props) {
           <div className="inline-flex p-3 rounded-full bg-blue-600/10 text-blue-600 text-3xl font-bold">
             🏦
           </div>
-          <h2 className="text-2xl font-bold">Acceso para Cajeros</h2>
+          <h2 className="text-2xl font-bold">Acceso para Asesores</h2>
           <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            Ingresa tu DNI y contraseña para iniciar sesión
+            Ingresa tu código de asesor y contraseña para iniciar sesión
           </p>
         </div>
 
@@ -70,14 +70,14 @@ export default function LoginForm({ onLoginSuccess, darkMode }: Props) {
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className={`block text-xs font-bold uppercase mb-1 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-              DNI del Cajero
+              Código de Asesor
             </label>
             <input
               type="text"
               maxLength={8}
               value={dni}
               onChange={(e) => setDni(e.target.value)}
-              placeholder="Numero de DNI"
+              placeholder="Código"
               className={`w-full p-3 border rounded-lg font-medium text-base ${inputStyle}`}
               required
             />
@@ -108,7 +108,7 @@ export default function LoginForm({ onLoginSuccess, darkMode }: Props) {
 
         <div className={`p-3 rounded-lg text-xs space-y-1 ${darkMode ? 'bg-gray-900/50 text-gray-400' : 'bg-gray-50 text-gray-600'}`}>
           <p>Si olvidaste tu contraseña, contacta al administrador del sistema.</p>
-          <p>Recuerda que tu DNI es único y no debe compartirse con nadie.</p>
+          <p>Recuerda que tu código es único y no debe compartirse con nadie.</p>
         </div>
       </div>
     </div>
