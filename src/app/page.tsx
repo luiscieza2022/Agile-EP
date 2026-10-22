@@ -27,7 +27,7 @@ export default function HomePage() {
     if (data) setClientes(data);
   };
 
-    const cargarCajaActiva = async (cajeroId: string) => {
+  const cargarCajaActiva = async (cajeroId: string) => {
     const { data: caja } = await supabase
       .from('cajas')
       .select('*')
@@ -37,14 +37,14 @@ export default function HomePage() {
       .maybeSingle();
 
     if (caja) {
-      // Consultar saldo real calculado (Apertura - Préstamos + Cobros)
+      // Consultar saldo real calculado en BD (Apertura - Desembolsos + Cobros)
       const { data: saldoCalculado } = await supabase.rpc('obtener_saldo_actual_caja', {
         p_caja_id: caja.id,
       });
 
       setCajaActiva({
         ...caja,
-        monto_actual: Number(saldoCalculado) ?? Number(caja.monto_apertura),
+        monto_actual: saldoCalculado !== null && saldoCalculado !== undefined ? Number(saldoCalculado) : Number(caja.monto_apertura),
       });
     } else {
       setCajaActiva(null);
@@ -259,10 +259,12 @@ export default function HomePage() {
 
                 <div>
                   <p className="text-3xl font-extrabold text-blue-500">
-                    S/ {cajaActiva ? parseFloat(cajaActiva.monto_apertura).toFixed(2) : '0.00'}
+                    S/ {cajaActiva ? parseFloat(cajaActiva.monto_actual ?? cajaActiva.monto_apertura).toFixed(2) : '0.00'}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
-                    {cajaActiva ? 'Monto aperturado en la sede' : 'Apertura caja para operar'}
+                    {cajaActiva
+                      ? `Apertura: S/ ${parseFloat(cajaActiva.monto_apertura).toFixed(2)} | Saldo en efectivo disponible`
+                      : 'Apertura caja para operar'}
                   </p>
                 </div>
 
@@ -373,6 +375,7 @@ export default function HomePage() {
             cajaId={cajaActiva?.id}
             darkMode={darkMode}
             onSuccess={() => {
+              cargarCajaActiva(cajeroActual.id);
               cargarClientes();
               cargarHistorialGeneral();
               setSeccionActiva('clientes');
@@ -553,7 +556,10 @@ export default function HomePage() {
               sede={cajeroActual.sede}
               cajaActiva={cajaActiva}
               darkMode={darkMode}
-              onActualizarCaja={(caja) => setCajaActiva(caja)}
+              onActualizarCaja={(caja) => {
+                setCajaActiva(caja);
+                if (caja) cargarCajaActiva(cajeroActual.id);
+              }}
             />
           </div>
         )}
@@ -569,6 +575,7 @@ export default function HomePage() {
           onClose={() => setCuotaACobrar(null)}
           onSuccess={() => {
             setCuotaACobrar(null);
+            cargarCajaActiva(cajeroActual.id);
             cargarClientes();
             cargarHistorialGeneral();
             if (clienteSeleccionado) cargarCuotasCliente(clienteSeleccionado.cliente_id);
