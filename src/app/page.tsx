@@ -27,8 +27,8 @@ export default function HomePage() {
     if (data) setClientes(data);
   };
 
-  const cargarCajaActiva = async (cajeroId: string) => {
-    const { data } = await supabase
+    const cargarCajaActiva = async (cajeroId: string) => {
+    const { data: caja } = await supabase
       .from('cajas')
       .select('*')
       .eq('cajero_id', cajeroId)
@@ -36,7 +36,19 @@ export default function HomePage() {
       .order('fecha_apertura', { ascending: false })
       .maybeSingle();
 
-    setCajaActiva(data || null);
+    if (caja) {
+      // Consultar saldo real calculado (Apertura - Préstamos + Cobros)
+      const { data: saldoCalculado } = await supabase.rpc('obtener_saldo_actual_caja', {
+        p_caja_id: caja.id,
+      });
+
+      setCajaActiva({
+        ...caja,
+        monto_actual: Number(saldoCalculado) ?? Number(caja.monto_apertura),
+      });
+    } else {
+      setCajaActiva(null);
+    }
   };
 
   const cargarHistorialGeneral = async () => {
