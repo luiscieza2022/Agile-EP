@@ -8,11 +8,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'El RUC debe tener exactamente 11 dígitos' }, { status: 400 });
   }
 
-  // Tu Token de APISPERU
-  const API_TOKEN = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6Imx1aXNjaWV6YTIwMjJAZ21haWwuY29tIiwianRpIjoiMTRjMzM5ZWYwNGQ5MzdiMyJ9.8nCzItbpMgrG7l0zwccaoKAgeKYtE7Pzd8U4rSlcS4U';
+  // Leer Token desde las variables de entorno del servidor
+  const API_TOKEN = process.env.APISPERU_TOKEN || 'bearer_demo';
 
   try {
-    // Consulta a la API de APISPERU con el token de usuario
     const res = await fetch(`https://dniruc.apisperu.com/api/v1/ruc/${ruc}?token=${API_TOKEN}`, {
       headers: { 'Content-Type': 'application/json' },
     });
@@ -20,7 +19,6 @@ export async function GET(request: Request) {
     if (res.ok) {
       const data = await res.json();
 
-      // Extraer representante legal si existe en la respuesta de la API
       const representante =
         data.representanteLegal ||
         data.representantes?.[0]?.nombre ||
@@ -38,7 +36,6 @@ export async function GET(request: Request) {
     console.error('Error al consultar APISPERU:', e);
   }
 
-  // Fallback de contingencia por si la API agota sus consultas o falla la conexión
   return NextResponse.json({
     razonSocial: `EMPRESA RUC ${ruc} S.A.C.`,
     representanteNombre: 'REPRESENTANTE LEGAL REGISTRADO EN SUNAT',
