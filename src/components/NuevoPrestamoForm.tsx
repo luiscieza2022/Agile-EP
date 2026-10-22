@@ -12,7 +12,7 @@ interface Props {
 }
 
 export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSuccess }: Props) {
-  const [tipoCliente, setTipoCliente] = useState<'DNI' | 'RUC_NATURAL' | 'RUC_JURIDICA'>('RUC_JURIDICA');
+  const [tipoCliente, setTipoCliente] = useState<'RUC_NATURAL' | 'RUC_JURIDICA'>('RUC_JURIDICA');
   const [documentoInput, setDocumentoInput] = useState('');
   const [loadingValidacion, setLoadingValidacion] = useState(false);
   const [clienteValidado, setClienteValidado] = useState<any | null>(null);
@@ -38,46 +38,44 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
     setClienteValidado(null);
 
     try {
-      if (tipoCliente === 'RUC_JURIDICA' || tipoCliente === 'RUC_NATURAL') {
-        const res = await fetch(`/api/ruc?ruc=${documentoInput.trim()}`);
-        if (res.ok) {
-          const dataSunat = await res.json();
+      const res = await fetch(`/api/ruc?ruc=${documentoInput.trim()}`);
+      if (res.ok) {
+        const dataSunat = await res.json();
 
-          let { data: clienteExistente } = await supabase
-            .from('vista_resumen_cliente')
-            .select('*')
-            .eq('ruc', documentoInput.trim())
-            .maybeSingle();
+        let { data: clienteExistente } = await supabase
+          .from('vista_resumen_cliente')
+          .select('*')
+          .eq('ruc', documentoInput.trim())
+          .maybeSingle();
 
-          if (!clienteExistente) {
-            const { data: nuevoCliente } = await supabase
-              .from('clientes')
-              .insert([
-                {
-                  nombre_o_razon_social: dataSunat.razonSocial,
-                  documento_identidad: documentoInput.trim(),
-                  ruc: documentoInput.trim(),
-                  sede: cajeroSede,
-                  representante_nombre: dataSunat.representanteNombre,
-                  representante_dni: dataSunat.representanteDni || '44123456',
-                },
-              ])
-              .select()
-              .single();
+        if (!clienteExistente) {
+          const { data: nuevoCliente } = await supabase
+            .from('clientes')
+            .insert([
+              {
+                nombre_o_razon_social: dataSunat.razonSocial,
+                documento_identidad: documentoInput.trim(),
+                ruc: documentoInput.trim(),
+                sede: cajeroSede,
+                representante_nombre: dataSunat.representanteNombre,
+                representante_dni: dataSunat.representanteDni || '44123456',
+              },
+            ])
+            .select()
+            .single();
 
-            clienteExistente = {
-              ...nuevoCliente,
-              cliente_id: nuevoCliente.id,
-              monto_total_prestado: 0,
-              saldo_disponible_prestamo: 10000,
-            };
-          }
-
-          setClienteValidado(clienteExistente);
+          clienteExistente = {
+            ...nuevoCliente,
+            cliente_id: nuevoCliente.id,
+            monto_total_prestado: 0,
+            saldo_disponible_prestamo: 10000,
+          };
         }
+
+        setClienteValidado(clienteExistente);
       }
     } catch (e: any) {
-      setError('Ocurrió un error al consultar el documento de identidad.');
+      setError('Ocurrió un error al consultar el número de RUC en SUNAT.');
     } finally {
       setLoadingValidacion(false);
     }
@@ -114,7 +112,7 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
 
   return (
     <div className="space-y-6">
-      {/* HEADER DE MÓDULO CON STEPPER PROGRESIVO ORIGINAL */}
+      {/* HEADER DE MÓDULO */}
       <div className={`p-6 rounded-2xl border shadow-sm ${cardStyle}`}>
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-gray-700/50">
           <div>
@@ -152,9 +150,9 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
         </div>
       )}
 
-      {/* CUERPO PRINCIPAL DE 2 COLUMNAS REORDENADO */}
+      {/* CUERPO PRINCIPAL */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* COLUMNA IZQUIERDA: FORMULARIO PRINCIPAL */}
+        {/* COLUMNA IZQUIERDA */}
         <div className="lg:col-span-2 space-y-6">
           {/* BLOQUE 1: IDENTIFICACIÓN DEL CLIENTE */}
           <div className={`p-6 rounded-2xl border space-y-5 ${cardStyle}`}>
@@ -166,7 +164,7 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
               <span className="text-xs text-gray-400 font-medium">Servicio API SUNAT Activo</span>
             </div>
 
-            {/* SELECCIÓN TIPO PÍLDORAS O CHIPS */}
+            {/* ÚNICAMENTE RUC 20 Y RUC 10 */}
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -195,38 +193,23 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
                     : 'bg-gray-900/40 text-gray-300 border-gray-700 hover:bg-gray-700/50'
                 }`}
               >
-                👤 Persona Natural con RUC (10)
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setTipoCliente('DNI');
-                  setClienteValidado(null);
-                }}
-                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
-                  tipoCliente === 'DNI'
-                    ? 'bg-blue-600 text-white border-blue-500 shadow-md'
-                    : 'bg-gray-900/40 text-gray-300 border-gray-700 hover:bg-gray-700/50'
-                }`}
-              >
-                🆔 DNI Representante
+                👤 Persona Natural con RUC (RUC 10)
               </button>
             </div>
 
-            {/* BUSCADOR CON ACCIÓN */}
+            {/* BUSCADOR */}
             <div className="space-y-1.5">
               <label className="block text-xs font-bold uppercase text-gray-400">
-                {tipoCliente === 'DNI' ? 'Número de DNI (8 Dígitos)' : 'Número de RUC (11 Dígitos)'}
+                Número de RUC (11 Dígitos)
               </label>
               <div className="flex gap-3">
                 <div className="relative flex-1">
                   <input
                     type="text"
-                    maxLength={tipoCliente === 'DNI' ? 8 : 11}
+                    maxLength={11}
                     value={documentoInput}
                     onChange={(e) => setDocumentoInput(e.target.value)}
-                    placeholder={tipoCliente === 'DNI' ? 'Ingrese DNI de 8 dígitos' : 'Ingrese RUC de 11 dígitos'}
+                    placeholder="Ingrese el número de RUC de 11 dígitos"
                     className={`w-full p-3 border rounded-xl font-mono text-base font-bold tracking-wider ${inputStyle}`}
                   />
                 </div>
@@ -249,7 +232,7 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
             </div>
           </div>
 
-          {/* BLOQUE 2: MONTO Y PLAN DE PAGOS */}
+          {/* BLOQUE 2: ESTRUCTURA FINANCIERA */}
           <div className={`p-6 rounded-2xl border space-y-5 ${cardStyle}`}>
             <h2 className="text-base font-bold flex items-center space-x-2">
               <span className="text-blue-500">💰</span>
@@ -300,7 +283,6 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
               </div>
             </div>
 
-            {/* LEYENDA OPERATIVA */}
             <div className="p-3.5 rounded-xl bg-blue-600/10 border border-blue-500/20 text-xs text-blue-300 flex justify-between items-center">
               <span>Tasa Fija de Interés: <strong>30% Global</strong></span>
               <span>Ciclo de Facturación: <strong>30 Días Estrictos</strong></span>
@@ -308,7 +290,7 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
           </div>
         </div>
 
-        {/* COLUMNA DERECHA: FICHA OPERATIVA DE RESUMEN Y APROBACIÓN */}
+        {/* COLUMNA DERECHA: FICHA OPERATIVA */}
         <div className="space-y-6">
           <div className={`p-6 rounded-2xl border space-y-4 ${cardStyle}`}>
             <div className="flex justify-between items-center border-b pb-3 border-gray-700/50">
@@ -321,7 +303,7 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
             {!clienteValidado ? (
               <div className="py-8 text-center text-xs text-gray-400 space-y-2">
                 <div className="text-3xl">📋</div>
-                <p>Ingresa el número de RUC o DNI y presiona <strong>Consultar Documento</strong> para verificar titularidad.</p>
+                <p>Ingresa el número de RUC de 11 dígitos y presiona <strong>Consultar Documento</strong> para verificar en SUNAT.</p>
               </div>
             ) : (
               <div className="space-y-3 text-xs">
