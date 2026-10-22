@@ -15,6 +15,7 @@ export interface RegistrarPagoSplitParams {
   metodo2?: string;
   monto2?: number;
   referencia?: string;
+  cajaId?: string;
 }
 
 export async function registrarPrestamo({
@@ -29,30 +30,53 @@ export async function registrarPrestamo({
   }
 
   if (!cajaId) {
-    throw new Error('No se puede realizar el préstamo sin una caja aperturada.');
+    throw new Error('No se puede realizar un préstamo sin una caja aperturada en la sede.');
   }
 
-  // 1. Consultar monto acumulado global en BD (Multi-Sede)
+  // 1. VALIDACIÓN DE DINERO FÍSICO EN CAJA (Se descuenta del saldo)
+  const { data: saldoCajaActual, error: errCaja } = await supabase.rpc(
+    'obtener_saldo_actual_caja',
+    { p_caja_id: cajaId }
+  );
+
+  if (errCaja) {
+    throw new Error('Error al verificar el saldo en efectivo disponible en la caja.');
+  }
+
+  const efectivoEnCaja = Number(saldoCajaActual) || 0;
+
+  if (montoBase > efectivoEnCaja) {
+    throw new Error(
+      `Fondo Insuficiente en Caja: La caja cuenta con S/ ${efectivoEnCaja.toFixed(
+        2
+      )} disponibles en efectivo y no alcanza para desembolsar S/ ${montoBase.toFixed(2)}.`
+    );
+  }
+
+  // 2. VALIDACIÓN DEL LÍMITE GLOBAL ACUMULADO MULTI-SEDE (Máximo S/ 10,000)
   const { data: acumuladoActual, error: errRpc } = await supabase.rpc(
     'obtener_monto_acumulado_cliente',
     { p_cliente_id: clienteId }
   );
 
   if (errRpc) {
-    throw new Error('Error al consultar el límite acumulado del cliente.');
+    throw new Error('Error al consultar el límite acumulado global del cliente.');
   }
 
   const totalConNuevoPrestamo = (Number(acumuladoActual) || 0) + montoBase;
 
-  // 2. Bloqueo Multi-Sede si excede S/ 10,000
   if (totalConNuevoPrestamo > 10000) {
     const disponible = 10000 - (Number(acumuladoActual) || 0);
     throw new Error(
-      `Operación Rechazada: El cliente tiene S/ ${acumuladoActual} prestados entre distintas sedes. Monto máximo disponible: S/ ${disponible.toFixed(2)}.`
+      `Operación Rechazada por Riesgo: El cliente registra un acumulado de S/ ${Number(
+        acumuladoActual
+      ).toFixed(2)} entre distintas sedes. Crédito máximo disponible: S/ ${disponible.toFixed(
+        2
+      )}.`
     );
   }
 
-  // 3. Registrar Préstamo
+  // 3. REGISTRO DEL PRÉSTAMO
   const tasaInteres = 30.0;
   const montoTotalConInteres = montoBase * 1.30;
   const montoCuotaMensual = Number((montoTotalConInteres / plazoMeses).toFixed(2));
@@ -75,17 +99,18 @@ export async function registrarPrestamo({
 
   if (errPrestamo) throw errPrestamo;
 
+  // Marcar alerta de sospechoso si alcanza exactamente los S/ 10,000 acumulados
   if (totalConNuevoPrestamo >= 10000) {
     await supabase.from('clientes').update({ es_sospechoso: true }).eq('id', clienteId);
   }
 
-  // 4. Generar Cronograma exacto a periodos de 30 días
+  // 4. GENERAR CRONOGRAMA CON INTERVALOS DE 30 DÍAS EXACTOS
   const cuotas = [];
   const fechaActual = new Date();
 
   for (let i = 1; i <= plazoMeses; i++) {
     const fechaVencimiento = new Date(fechaActual);
-    fechaVencimiento.setDate(fechaVencimiento.getDate() + (30 * i));
+    fechaVencimiento.setDate(fechaVencimiento.getDate() + 30 * i);
 
     cuotas.push({
       prestamo_id: prestamo.id,
@@ -110,6 +135,7 @@ export async function registrarPagoSplit({
   metodo2,
   monto2 = 0,
   referencia,
+  cajaId,
 }: RegistrarPagoSplitParams) {
   const montoTotal = monto1 + monto2;
 
@@ -119,11 +145,13 @@ export async function registrarPagoSplit({
     .eq('id', cuotaId)
     .single();
 
-  if (errCuota || !cuota) throw new Error('No se encontró la cuota.');
+  if (errCuota || !cuota) throw new Error('No se encontró la cuota a cobrar.');
 
+  // Registrar el ingreso del pago vinculado a la caja activa
   const { error: errPago } = await supabase.from('pagos').insert([
     {
       cuota_id: cuotaId,
+      caja_id: cajaId || null,
       monto_total: montoTotal,
       metodo_pago_1: metodo1,
       monto_metodo_1: monto1,
@@ -138,6 +166,7 @@ export async function registrarPagoSplit({
   const nuevoMontoPagado = Number(cuota.monto_pagado) + montoTotal;
   const nuevoEstado = nuevoMontoPagado >= Number(cuota.monto_cuota) ? 'Pagado' : 'Pendiente';
 
+  // Actualizar estado de la cuota
   const { error: errUpdateCuota } = await supabase
     .from('cuotas')
     .update({
