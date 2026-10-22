@@ -7,8 +7,6 @@ import CobroSplitModal from '@/components/CobroSplitModal';
 import LoginForm from '@/components/LoginForm';
 import CajaControlModal from '@/components/CajaControlModal';
 
-const SEDES = ['Chimbote', 'Trujillo', 'Chiclayo', 'Tumbes', 'Piura'] as const;
-
 export default function HomePage() {
   const [darkMode, setDarkMode] = useState(true);
   const [cajeroActual, setCajeroActual] = useState<any | null>(null);
@@ -23,15 +21,6 @@ export default function HomePage() {
   const [todosLosPrestamos, setTodosLosPrestamos] = useState<any[]>([]);
   
   const [cuotaACobrar, setCuotaACobrar] = useState<any | null>(null);
-
-  // Formulario con API SUNAT
-  const [rucInput, setRucInput] = useState('');
-  const [razonSocial, setRazonSocial] = useState('');
-  const [sede, setSede] = useState<typeof SEDES[number]>('Trujillo');
-  const [repNombre, setRepNombre] = useState('');
-  const [repDni, setRepDni] = useState('');
-  const [repTelefono, setRepTelefono] = useState('');
-  const [consultandoSunat, setConsultandoSunat] = useState(false);
 
   const cargarClientes = async () => {
     const { data } = await supabase.from('vista_resumen_cliente').select('*');
@@ -93,65 +82,8 @@ export default function HomePage() {
       cargarCajaActiva(cajeroActual.id);
       cargarClientes();
       cargarHistorialGeneral();
-      setSede(cajeroActual.sede);
     }
   }, [cajeroActual]);
-
-  const consultarSunatApi = async (ruc: string) => {
-    if (ruc.length !== 11) return;
-    setConsultandoSunat(true);
-
-    try {
-      const res = await fetch(`/api/ruc?ruc=${ruc}`);
-      if (res.ok) {
-        const data = await res.json();
-        setRazonSocial(data.razonSocial || '');
-        setRepNombre(data.representanteNombre || '');
-      }
-    } catch (e) {
-      console.error('Error al consultar SUNAT', e);
-    } finally {
-      setConsultandoSunat(false);
-    }
-  };
-
-  const handleCrearCliente = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!razonSocial || !rucInput || !repNombre || !repDni) return;
-
-    const { data: nuevoCliente } = await supabase
-      .from('clientes')
-      .insert([
-        {
-          nombre_o_razon_social: razonSocial,
-          documento_identidad: rucInput,
-          ruc: rucInput,
-          sede,
-          representante_nombre: repNombre,
-          representante_dni: repDni,
-          representante_telefono: repTelefono,
-        },
-      ])
-      .select()
-      .single();
-
-    setRazonSocial('');
-    setRucInput('');
-    setRepNombre('');
-    setRepDni('');
-    setRepTelefono('');
-    await cargarClientes();
-
-    if (nuevoCliente) {
-      setClienteSeleccionado({
-        ...nuevoCliente,
-        cliente_id: nuevoCliente.id,
-        monto_total_prestado: 0,
-        saldo_disponible_prestamo: 10000,
-      });
-      setSeccionActiva('nuevo-prestamo');
-    }
-  };
 
   const clientesFiltrados = clientes.filter((c) => {
     const q = busqueda.toLowerCase().trim();
@@ -236,7 +168,7 @@ export default function HomePage() {
 
       {/* CONTENIDO PRINCIPAL CENTRADO */}
       <main className="max-w-7xl w-full mx-auto p-6 md:p-8 space-y-6 flex-1">
-        {/* NAVEGACIÓN SUPERIOR ENTRE VISTAS */}
+        {/* NAVEGACIÓN SUPERIOR */}
         <div className="flex border-b border-gray-700 space-x-2">
           <button
             onClick={() => setSeccionActiva('inicio')}
@@ -424,132 +356,16 @@ export default function HomePage() {
 
         {/* SECCIÓN 2: NUEVO PRÉSTAMO */}
         {seccionActiva === 'nuevo-prestamo' && (
-          <div className="space-y-6">
-            <h1 className="text-2xl font-bold">Nuevo Préstamo</h1>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div
-                className={`lg:col-span-2 p-6 rounded-xl border space-y-4 ${
-                  darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-                }`}
-              >
-                <h2 className="text-lg font-bold">1. Registrar y Validar Empresa con SUNAT</h2>
-
-                <form onSubmit={handleCrearCliente} className="space-y-3 text-sm">
-                  <div>
-                    <label className="block text-xs font-bold uppercase mb-1">RUC de la Empresa (11 dígitos)</label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        placeholder="Ej: 20601234567"
-                        maxLength={11}
-                        value={rucInput}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setRucInput(v);
-                          if (v.length === 11) consultarSunatApi(v);
-                        }}
-                        className={`flex-1 p-2.5 border rounded-lg font-bold ${inputStyle}`}
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => consultarSunatApi(rucInput)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 rounded-lg text-xs"
-                      >
-                        {consultandoSunat ? 'Consultando...' : 'Validar SUNAT'}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase mb-1">Razón Social (Oficial SUNAT)</label>
-                    <input
-                      type="text"
-                      value={razonSocial}
-                      onChange={(e) => setRazonSocial(e.target.value)}
-                      placeholder="Razón social devuelta por la API"
-                      className={`w-full p-2.5 border rounded-lg font-medium ${inputStyle}`}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold uppercase mb-1">Representante Legal Oficial</label>
-                    <input
-                      type="text"
-                      value={repNombre}
-                      onChange={(e) => setRepNombre(e.target.value)}
-                      placeholder="Nombre completo del representante legal"
-                      className={`w-full p-2.5 border rounded-lg font-medium ${inputStyle}`}
-                      required
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold uppercase mb-1">DNI del Representante</label>
-                      <input
-                        type="text"
-                        maxLength={8}
-                        value={repDni}
-                        onChange={(e) => setRepDni(e.target.value)}
-                        placeholder="DNI 8 dígitos"
-                        className={`w-full p-2.5 border rounded-lg font-medium ${inputStyle}`}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold uppercase mb-1">Teléfono</label>
-                      <input
-                        type="text"
-                        value={repTelefono}
-                        onChange={(e) => setRepTelefono(e.target.value)}
-                        placeholder="Teléfono contacto"
-                        className={`w-full p-2.5 border rounded-lg font-medium ${inputStyle}`}
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={!cajaActiva || !razonSocial}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 text-white font-bold py-3 rounded-lg text-sm transition-colors mt-2"
-                  >
-                    Continuar a Evaluación de Crédito →
-                  </button>
-                </form>
-              </div>
-
-              <div className="space-y-4">
-                {clienteSeleccionado ? (
-                  <NuevoPrestamoForm
-                    clienteId={clienteSeleccionado.cliente_id || clienteSeleccionado.id}
-                    nombreEmpresa={clienteSeleccionado.nombre_o_razon_social}
-                    representanteNombre={clienteSeleccionado.representante_nombre}
-                    sede={cajeroActual.sede}
-                    saldoDisponible={parseFloat(clienteSeleccionado.saldo_disponible_prestamo || 10000)}
-                    cajaId={cajaActiva?.id}
-                    darkMode={darkMode}
-                    onSuccess={() => {
-                      cargarClientes();
-                      cargarHistorialGeneral();
-                      setSeccionActiva('clientes');
-                    }}
-                  />
-                ) : (
-                  <div
-                    className={`p-6 rounded-xl border text-center space-y-2 ${
-                      darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-white border-gray-200 text-gray-500'
-                    }`}
-                  >
-                    <p className="font-bold text-sm">Paso 2. Condiciones del préstamo</p>
-                    <p className="text-xs">Digita el RUC y valida primero el cliente para desbloquear las opciones de monto y plazo.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <NuevoPrestamoForm
+            cajeroSede={cajeroActual.sede}
+            cajaId={cajaActiva?.id}
+            darkMode={darkMode}
+            onSuccess={() => {
+              cargarClientes();
+              cargarHistorialGeneral();
+              setSeccionActiva('clientes');
+            }}
+          />
         )}
 
         {/* SECCIÓN 3: HISTORIAL Y CLIENTES */}
