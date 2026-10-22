@@ -17,17 +17,20 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
   const [loadingValidacion, setLoadingValidacion] = useState(false);
   const [clienteValidado, setClienteValidado] = useState<any | null>(null);
 
-  // Condiciones del Préstamo
-  const [monto, setMonto] = useState<number>(1000);
+  // Parámetros de préstamo
+  const [monto, setMonto] = useState<number>(2000);
   const [plazo, setPlazo] = useState<number>(12);
   const [loadingProceso, setLoadingProceso] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const hoyFechaFormateada = new Date().toISOString().split('T')[0];
+  const hoyFecha = new Date().toISOString().split('T')[0];
   const montoTotalConInteres = monto * 1.30;
   const cuotaMensual = (montoTotalConInteres / (plazo || 1)).toFixed(2);
 
-  // Validar con SUNAT o en la Base de Datos
+  // Primera cuota a 30 días exactos
+  const fechaPrimeraCuota = new Date();
+  fechaPrimeraCuota.setDate(fechaPrimeraCuota.getDate() + 30);
+
   const handleValidarCliente = async () => {
     if (!documentoInput.trim()) return;
     setLoadingValidacion(true);
@@ -40,7 +43,6 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
         if (res.ok) {
           const dataSunat = await res.json();
 
-          // Buscar o registrar cliente en Supabase
           let { data: clienteExistente } = await supabase
             .from('vista_resumen_cliente')
             .select('*')
@@ -75,15 +77,16 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
         }
       }
     } catch (e: any) {
-      setError('Error al consultar el documento.');
+      setError('Ocurrió un error al consultar el documento de identidad.');
     } finally {
       setLoadingValidacion(false);
     }
   };
 
-  const excedeLimite = clienteValidado
-    ? monto > parseFloat(clienteValidado.saldo_disponible_prestamo)
-    : false;
+  const saldoDisponible = clienteValidado
+    ? parseFloat(clienteValidado.saldo_disponible_prestamo)
+    : 10000;
+  const excedeLimite = monto > saldoDisponible;
 
   const handleEmitirPrestamo = async () => {
     if (!clienteValidado || !cajaId) return;
@@ -100,52 +103,84 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
       });
       onSuccess();
     } catch (err: any) {
-      setError(err.message || 'Error al procesar el préstamo.');
+      setError(err.message || 'Error al procesar el desembolso.');
     } finally {
       setLoadingProceso(false);
     }
   };
 
-  const inputStyle = darkMode
-    ? 'bg-gray-800 text-white border-gray-600 focus:bg-gray-700'
-    : 'bg-white text-gray-900 border-gray-300 focus:bg-gray-50';
+  const cardStyle = darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900';
+  const inputStyle = darkMode ? 'bg-gray-900 text-white border-gray-600 focus:border-blue-500' : 'bg-gray-50 text-gray-900 border-gray-300 focus:border-blue-600';
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Nuevo préstamo</h1>
+      {/* HEADER DE MÓDULO CON STEPPER PROGRESIVO ORIGINAL */}
+      <div className={`p-6 rounded-2xl border shadow-sm ${cardStyle}`}>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-gray-700/50">
+          <div>
+            <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">Módulo de Originación de Crédito</span>
+            <h1 className="text-2xl font-extrabold mt-0.5">Emisión de Préstamo Empresarial</h1>
+          </div>
+          <div className="flex items-center space-x-2 text-xs font-semibold bg-blue-600/10 text-blue-400 px-3 py-1.5 rounded-lg border border-blue-500/20">
+            <span>Sede Operativa:</span>
+            <strong className="uppercase">{cajeroSede}</strong>
+          </div>
+        </div>
+
+        {/* PASOS DE EVALUACIÓN */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 text-xs font-bold">
+          <div className={`flex items-center space-x-3 p-2.5 rounded-xl border ${clienteValidado ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'bg-gray-900/30 border-gray-700 text-gray-400'}`}>
+            <span className="h-6 w-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-extrabold">1</span>
+            <span>Consulta & Validación SUNAT</span>
+          </div>
+
+          <div className={`flex items-center space-x-3 p-2.5 rounded-xl border ${clienteValidado ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'bg-gray-900/30 border-gray-700 text-gray-400'}`}>
+            <span className="h-6 w-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-extrabold">2</span>
+            <span>Parametrización de Crédito</span>
+          </div>
+
+          <div className={`flex items-center space-x-3 p-2.5 rounded-xl border ${clienteValidado && !excedeLimite ? 'bg-blue-600/20 border-blue-500 text-blue-400' : 'bg-gray-900/30 border-gray-700 text-gray-400'}`}>
+            <span className="h-6 w-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-extrabold">3</span>
+            <span>Aprobación y Desembolso</span>
+          </div>
+        </div>
+      </div>
 
       {error && (
-        <div className="bg-red-500/10 border-l-4 border-red-500 p-3 text-red-500 text-sm font-bold rounded">
-          {error}
+        <div className="bg-red-500/10 border-l-4 border-red-500 p-4 text-red-400 text-sm font-semibold rounded-lg">
+          ⚠️ {error}
         </div>
       )}
 
+      {/* CUERPO PRINCIPAL DE 2 COLUMNAS REORDENADO */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* COLUMNA IZQUIERDA: PASOS 1 Y 2 */}
+        {/* COLUMNA IZQUIERDA: FORMULARIO PRINCIPAL */}
         <div className="lg:col-span-2 space-y-6">
-          {/* PASO 1: DATOS DEL CLIENTE */}
-          <div
-            className={`p-6 rounded-xl border space-y-4 ${
-              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-            }`}
-          >
-            <h2 className="text-base font-bold">1. Datos del cliente</h2>
+          {/* BLOQUE 1: IDENTIFICACIÓN DEL CLIENTE */}
+          <div className={`p-6 rounded-2xl border space-y-5 ${cardStyle}`}>
+            <div className="flex justify-between items-center">
+              <h2 className="text-base font-bold flex items-center space-x-2">
+                <span className="text-blue-500">🏢</span>
+                <span>Selección del Tipo de Titular</span>
+              </h2>
+              <span className="text-xs text-gray-400 font-medium">Servicio API SUNAT Activo</span>
+            </div>
 
-            {/* BOTONES TIPO DE CLIENTE */}
-            <div className="grid grid-cols-3 gap-2">
+            {/* SELECCIÓN TIPO PÍLDORAS O CHIPS */}
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => {
-                  setTipoCliente('DNI');
+                  setTipoCliente('RUC_JURIDICA');
                   setClienteValidado(null);
                 }}
-                className={`py-2.5 px-3 text-xs font-bold rounded-lg border transition-all ${
-                  tipoCliente === 'DNI'
-                    ? 'bg-emerald-600 text-white border-emerald-500'
-                    : 'bg-gray-900/30 border-gray-700 text-gray-300 hover:bg-gray-700/50'
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                  tipoCliente === 'RUC_JURIDICA'
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                    : 'bg-gray-900/40 text-gray-300 border-gray-700 hover:bg-gray-700/50'
                 }`}
               >
-                Persona natural (DNI)
+                🏢 Persona Jurídica (RUC 20)
               </button>
 
               <button
@@ -154,180 +189,194 @@ export default function NuevoPrestamoForm({ cajeroSede, cajaId, darkMode, onSucc
                   setTipoCliente('RUC_NATURAL');
                   setClienteValidado(null);
                 }}
-                className={`py-2.5 px-3 text-xs font-bold rounded-lg border transition-all ${
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
                   tipoCliente === 'RUC_NATURAL'
-                    ? 'bg-emerald-600 text-white border-emerald-500'
-                    : 'bg-gray-900/30 border-gray-700 text-gray-300 hover:bg-gray-700/50'
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                    : 'bg-gray-900/40 text-gray-300 border-gray-700 hover:bg-gray-700/50'
                 }`}
               >
-                Persona natural con RUC
+                👤 Persona Natural con RUC (10)
               </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  setTipoCliente('RUC_JURIDICA');
+                  setTipoCliente('DNI');
                   setClienteValidado(null);
                 }}
-                className={`py-2.5 px-3 text-xs font-bold rounded-lg border transition-all ${
-                  tipoCliente === 'RUC_JURIDICA'
-                    ? 'bg-emerald-600 text-white border-emerald-500'
-                    : 'bg-gray-900/30 border-gray-700 text-gray-300 hover:bg-gray-700/50'
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+                  tipoCliente === 'DNI'
+                    ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                    : 'bg-gray-900/40 text-gray-300 border-gray-700 hover:bg-gray-700/50'
                 }`}
               >
-                Persona jurídica
+                🆔 DNI Representante
               </button>
             </div>
 
-            {/* INPUT DE DOCUMENTO + BOTÓN VALIDAR */}
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 mb-1">
-                {tipoCliente === 'DNI' ? 'N° de DNI (8 dígitos)' : 'N° de RUC (11 dígitos)'}
+            {/* BUSCADOR CON ACCIÓN */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold uppercase text-gray-400">
+                {tipoCliente === 'DNI' ? 'Número de DNI (8 Dígitos)' : 'Número de RUC (11 Dígitos)'}
               </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  maxLength={tipoCliente === 'DNI' ? 8 : 11}
-                  value={documentoInput}
-                  onChange={(e) => setDocumentoInput(e.target.value)}
-                  placeholder={tipoCliente === 'DNI' ? 'Ej. 45871236' : 'Ej. 20601234567'}
-                  className={`flex-1 p-2.5 border rounded-lg font-bold text-sm ${inputStyle}`}
-                />
+              <div className="flex gap-3">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    maxLength={tipoCliente === 'DNI' ? 8 : 11}
+                    value={documentoInput}
+                    onChange={(e) => setDocumentoInput(e.target.value)}
+                    placeholder={tipoCliente === 'DNI' ? 'Ingrese DNI de 8 dígitos' : 'Ingrese RUC de 11 dígitos'}
+                    className={`w-full p-3 border rounded-xl font-mono text-base font-bold tracking-wider ${inputStyle}`}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={handleValidarCliente}
                   disabled={loadingValidacion || !documentoInput.trim()}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-600 text-white font-bold px-6 rounded-lg text-sm transition-colors"
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white font-bold px-6 py-3 rounded-xl text-xs transition-all shadow-md flex items-center space-x-2"
                 >
-                  {loadingValidacion ? 'Consultando...' : 'Validar'}
+                  {loadingValidacion ? (
+                    <span>Consultando...</span>
+                  ) : (
+                    <>
+                      <span>🔍</span>
+                      <span>Consultar Documento</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
           </div>
 
-          {/* PASO 2: CONDICIONES DEL PRÉSTAMO */}
-          <div
-            className={`p-6 rounded-xl border space-y-4 ${
-              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-            }`}
-          >
-            <h2 className="text-base font-bold">2. Condiciones del préstamo</h2>
-            <p className="text-xs text-gray-400">
-              {clienteValidado ? 'Selecciona el monto y el plazo.' : 'Primero valida el documento del cliente.'}
-            </p>
+          {/* BLOQUE 2: MONTO Y PLAN DE PAGOS */}
+          <div className={`p-6 rounded-2xl border space-y-5 ${cardStyle}`}>
+            <h2 className="text-base font-bold flex items-center space-x-2">
+              <span className="text-blue-500">💰</span>
+              <span>Estructura Financiera del Préstamo</span>
+            </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-400 mb-1">Fecha del préstamo</label>
+                <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Fecha de Desembolso</label>
                 <input
                   type="date"
-                  value={hoyFechaFormateada}
+                  value={hoyFecha}
                   disabled
-                  className={`w-full p-2.5 border rounded-lg text-sm font-semibold ${
-                    darkMode ? 'bg-gray-700 border-gray-600 text-gray-300' : 'bg-gray-100 border-gray-300 text-gray-700'
-                  }`}
+                  className={`w-full p-3 border rounded-xl font-bold text-sm ${darkMode ? 'bg-gray-900 border-gray-700 text-gray-400' : 'bg-gray-100 border-gray-300 text-gray-600'}`}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-400 mb-1">Monto (S/)</label>
+                <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Monto Solicitado (S/)</label>
                 <input
                   type="number"
                   min="100"
                   max="10000"
+                  step="100"
                   value={monto}
                   onChange={(e) => setMonto(Number(e.target.value))}
                   disabled={!clienteValidado}
-                  placeholder="1 a 10000"
-                  className={`w-full p-2.5 border rounded-lg text-sm font-bold ${inputStyle}`}
+                  className={`w-full p-3 border rounded-xl font-bold text-base ${inputStyle} ${excedeLimite ? 'border-red-500 bg-red-500/10' : ''}`}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-400 mb-1">Plazo (meses)</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="60"
+                <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Plazo de Devolución</label>
+                <select
                   value={plazo}
                   onChange={(e) => setPlazo(Number(e.target.value))}
                   disabled={!clienteValidado}
-                  placeholder="1 a 60"
-                  className={`w-full p-2.5 border rounded-lg text-sm font-bold ${inputStyle}`}
-                />
+                  className={`w-full p-3 border rounded-xl font-bold text-sm ${inputStyle}`}
+                >
+                  <option value={1}>1 Mes (30 días)</option>
+                  <option value={3}>3 Meses</option>
+                  <option value={6}>6 Meses</option>
+                  <option value={12}>12 Meses (1 Año)</option>
+                  <option value={24}>24 Meses (2 Años)</option>
+                  <option value={36}>36 Meses (3 Años)</option>
+                  <option value={60}>60 Meses (5 Años)</option>
+                </select>
               </div>
             </div>
 
-            <p className="text-[11px] text-gray-400">
-              De S/ 1 a S/ 10,000 · como máximo 60 meses · 30 % fijo · cuota fija cada 30 días.
-            </p>
+            {/* LEYENDA OPERATIVA */}
+            <div className="p-3.5 rounded-xl bg-blue-600/10 border border-blue-500/20 text-xs text-blue-300 flex justify-between items-center">
+              <span>Tasa Fija de Interés: <strong>30% Global</strong></span>
+              <span>Ciclo de Facturación: <strong>30 Días Estrictos</strong></span>
+            </div>
           </div>
         </div>
 
-        {/* COLUMNA DERECHA: RESUMEN Y VERIFICACIONES */}
+        {/* COLUMNA DERECHA: FICHA OPERATIVA DE RESUMEN Y APROBACIÓN */}
         <div className="space-y-6">
-          {/* FICHA DE RESUMEN */}
-          <div
-            className={`p-6 rounded-xl border space-y-3 ${
-              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-            }`}
-          >
-            <h3 className="text-base font-bold">Resumen</h3>
+          <div className={`p-6 rounded-2xl border space-y-4 ${cardStyle}`}>
+            <div className="flex justify-between items-center border-b pb-3 border-gray-700/50">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-blue-400">Ficha de Evaluación</h3>
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${clienteValidado ? 'bg-green-500/20 text-green-400' : 'bg-gray-700 text-gray-400'}`}>
+                {clienteValidado ? '✓ VALIDADO' : 'PENDIENTE'}
+              </span>
+            </div>
 
             {!clienteValidado ? (
-              <p className="text-xs text-gray-400">Valida primero al cliente.</p>
+              <div className="py-8 text-center text-xs text-gray-400 space-y-2">
+                <div className="text-3xl">📋</div>
+                <p>Ingresa el número de RUC o DNI y presiona <strong>Consultar Documento</strong> para verificar titularidad.</p>
+              </div>
             ) : (
-              <div className="space-y-2 text-xs">
-                <div className="border-b pb-2 border-gray-700">
-                  <p className="text-gray-400">Empresa / Cliente:</p>
-                  <p className="font-bold text-sm text-blue-400">{clienteValidado.nombre_o_razon_social}</p>
+              <div className="space-y-3 text-xs">
+                <div>
+                  <span className="text-gray-400 block text-[10px] uppercase font-bold">Razón Social / Titular</span>
+                  <p className="font-extrabold text-sm text-white">{clienteValidado.nombre_o_razon_social}</p>
+                  <p className="text-gray-400">RUC: {clienteValidado.ruc}</p>
                 </div>
 
-                <div className="border-b pb-2 border-gray-700">
-                  <p className="text-gray-400">Representante Legal (SUNAT):</p>
-                  <p className="font-bold text-emerald-400">{clienteValidado.representante_nombre}</p>
-                  <p className="text-[11px] text-gray-400">DNI: {clienteValidado.representante_dni}</p>
+                <div className="p-3 rounded-xl bg-gray-900/50 border border-gray-700/50 space-y-1">
+                  <span className="text-blue-400 font-bold block text-[10px] uppercase">Representante Legal (SUNAT)</span>
+                  <p className="font-bold text-gray-200">{clienteValidado.representante_nombre}</p>
+                  <p className="text-gray-400">DNI: {clienteValidado.representante_dni}</p>
                 </div>
 
-                <div className="pt-1">
-                  <p>Monto Base: <strong>S/ {monto.toFixed(2)}</strong></p>
-                  <p>Total a Devolver (30%): <strong>S/ {montoTotalConInteres.toFixed(2)}</strong></p>
-                  <p>Cuota Mensual ({plazo}m): <strong className="text-green-400">S/ {cuotaMensual}</strong></p>
-                  <p className="text-emerald-400 mt-1">
-                    Disponible: S/ {parseFloat(clienteValidado.saldo_disponible_prestamo).toFixed(2)}
-                  </p>
+                <div className="border-t pt-3 border-gray-700/50 space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Monto del Préstamo:</span>
+                    <strong className="text-white">S/ {monto.toFixed(2)}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Total con Interés (30%):</span>
+                    <strong className="text-white">S/ {montoTotalConInteres.toFixed(2)}</strong>
+                  </div>
+                  <div className="flex justify-between text-sm pt-1 border-t border-gray-700/30">
+                    <span className="font-bold text-blue-400">Cuota Mensual:</span>
+                    <strong className="font-extrabold text-blue-400">S/ {cuotaMensual}</strong>
+                  </div>
+                  <div className="flex justify-between text-[11px] text-gray-400 pt-1">
+                    <span>Vencimiento 1ª Cuota:</span>
+                    <strong>{fechaPrimeraCuota.toLocaleDateString('es-PE')}</strong>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex justify-between font-bold">
+                  <span>Límite Disponible:</span>
+                  <span>S/ {saldoDisponible.toFixed(2)} / S/ 10,000</span>
                 </div>
               </div>
             )}
-          </div>
 
-          {/* FICHA DE VERIFICACIONES Y ACCIÓN */}
-          <div
-            className={`p-6 rounded-xl border space-y-4 ${
-              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
-            }`}
-          >
-            <h3 className="text-base font-bold">Verificaciones</h3>
-
-            <div className="flex items-center space-x-2 text-xs">
-              <span className={`h-2.5 w-2.5 rounded-full ${clienteValidado ? 'bg-emerald-500' : 'bg-gray-500'}`} />
-              <span className={clienteValidado ? 'text-gray-200 font-semibold' : 'text-gray-400'}>
-                {clienteValidado ? 'Cliente validado con SUNAT' : 'Cliente no validado'}
-              </span>
-            </div>
+            {excedeLimite && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold">
+                ⚠️ El monto ingresado excede el crédito máximo disponible acumulado (S/ {saldoDisponible.toFixed(2)}).
+              </div>
+            )}
 
             <button
               type="button"
               onClick={handleEmitirPrestamo}
               disabled={!clienteValidado || excedeLimite || loadingProceso}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl text-sm transition-colors shadow-md"
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 text-white font-extrabold py-3.5 px-4 rounded-xl text-xs uppercase tracking-wider transition-all shadow-lg shadow-blue-600/20 mt-2"
             >
-              {loadingProceso ? 'Generando préstamo...' : 'Generar contrato y cronograma'}
+              {loadingProceso ? 'Emitiendo Préstamo...' : 'Aprobar y Emitir Desembolso'}
             </button>
-
-            <p className="text-[11px] text-gray-400">
-              Todavía no se guarda nada: el préstamo se registra cuando confirmes que el contrato está firmado.
-            </p>
           </div>
         </div>
       </div>
