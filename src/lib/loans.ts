@@ -8,6 +8,15 @@ export interface RegistrarPrestamoParams {
   cajaId: string;
 }
 
+export interface RegistrarPagoSplitParams {
+  cuotaId: string;
+  metodo1: string;
+  monto1: number;
+  metodo2?: string;
+  monto2?: number;
+  referencia?: string;
+}
+
 export async function registrarPrestamo({
   clienteId,
   sede,
@@ -23,19 +32,19 @@ export async function registrarPrestamo({
     throw new Error('No se puede realizar el préstamo sin una caja aperturada.');
   }
 
-  // 1. Obtener monto acumulado actual en BD (Consolidado Multi-Sede)
+  // 1. Consultar monto acumulado global en BD (Multi-Sede)
   const { data: acumuladoActual, error: errRpc } = await supabase.rpc(
     'obtener_monto_acumulado_cliente',
     { p_cliente_id: clienteId }
   );
 
   if (errRpc) {
-    throw new Error('Error al consultar el límite del cliente.');
+    throw new Error('Error al consultar el límite acumulado del cliente.');
   }
 
   const totalConNuevoPrestamo = (Number(acumuladoActual) || 0) + montoBase;
 
-  // 2. BLOQUEO MULTI-SEDE: Excede el máximo acumulado de S/ 10,000
+  // 2. Bloqueo Multi-Sede si excede S/ 10,000
   if (totalConNuevoPrestamo > 10000) {
     const disponible = 10000 - (Number(acumuladoActual) || 0);
     throw new Error(
@@ -66,18 +75,17 @@ export async function registrarPrestamo({
 
   if (errPrestamo) throw errPrestamo;
 
-  // Marcar reporte sospechoso si alcanza exactamente los S/ 10,000 acumulados
   if (totalConNuevoPrestamo >= 10000) {
     await supabase.from('clientes').update({ es_sospechoso: true }).eq('id', clienteId);
   }
 
-  // 4. Generar Cronograma
+  // 4. Generar Cronograma exacto a periodos de 30 días
   const cuotas = [];
   const fechaActual = new Date();
 
   for (let i = 1; i <= plazoMeses; i++) {
     const fechaVencimiento = new Date(fechaActual);
-    fechaVencimiento.setDate(fechaVencimiento.getDate() + (30 * i)); // Regla exacta de periodos de 30 dias
+    fechaVencimiento.setDate(fechaVencimiento.getDate() + (30 * i));
 
     cuotas.push({
       prestamo_id: prestamo.id,
@@ -95,9 +103,6 @@ export async function registrarPrestamo({
   return prestamo;
 }
 
-/**
- * Registra el pago de una cuota admitiendo hasta 2 métodos de pago (Pago Split).
- */
 export async function registrarPagoSplit({
   cuotaId,
   metodo1,
@@ -108,7 +113,6 @@ export async function registrarPagoSplit({
 }: RegistrarPagoSplitParams) {
   const montoTotal = monto1 + monto2;
 
-  // 1. Obtener la cuota
   const { data: cuota, error: errCuota } = await supabase
     .from('cuotas')
     .select('*')
@@ -117,7 +121,6 @@ export async function registrarPagoSplit({
 
   if (errCuota || !cuota) throw new Error('No se encontró la cuota.');
 
-  // 2. Registrar el cobro en la tabla pagos
   const { error: errPago } = await supabase.from('pagos').insert([
     {
       cuota_id: cuotaId,
@@ -132,7 +135,6 @@ export async function registrarPagoSplit({
 
   if (errPago) throw errPago;
 
-  // 3. Actualizar estado de la cuota
   const nuevoMontoPagado = Number(cuota.monto_pagado) + montoTotal;
   const nuevoEstado = nuevoMontoPagado >= Number(cuota.monto_cuota) ? 'Pagado' : 'Pendiente';
 
