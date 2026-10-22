@@ -4,49 +4,50 @@ export interface RegistrarPrestamoParams {
   clienteId: string;
   sede: 'Chimbote' | 'Trujillo' | 'Chiclayo' | 'Tumbes' | 'Piura';
   montoBase: number;
-  plazoMeses: number; // 1 a 60
+  plazoMeses: number;
+  cajaId: string;
 }
 
-/**
- * Registra un nuevo prestamo validando el limite acumulado de S/ 10,000.
- */
 export async function registrarPrestamo({
   clienteId,
   sede,
   montoBase,
   plazoMeses,
+  cajaId,
 }: RegistrarPrestamoParams) {
   if (plazoMeses < 1 || plazoMeses > 60) {
     throw new Error('El plazo debe ser de mínimo 1 mes y máximo 5 años (60 meses).');
   }
 
-  // 1. Obtener total prestado previo del cliente
-  const { data: resumen, error: errResumen } = await supabase
-    .from('vista_resumen_cliente')
-    .select('*')
-    .eq('cliente_id', clienteId)
-    .single();
-
-  if (errResumen && errResumen.code !== 'PGRST116') {
-    throw new Error('Error al verificar el historial crediticio del cliente.');
+  if (!cajaId) {
+    throw new Error('No se puede realizar el préstamo sin una caja aperturada.');
   }
 
-  const acumuladoActual = resumen ? parseFloat(resumen.monto_total_prestado) : 0;
-  const nuevoTotal = acumuladoActual + montoBase;
+  // 1. Obtener monto acumulado actual en BD (Consolidado Multi-Sede)
+  const { data: acumuladoActual, error: errRpc } = await supabase.rpc(
+    'obtener_monto_acumulado_cliente',
+    { p_cliente_id: clienteId }
+  );
 
-  // Si excede los 10,000 Soles, bloquear operacion
-  if (nuevoTotal > 10000) {
+  if (errRpc) {
+    throw new Error('Error al consultar el límite del cliente.');
+  }
+
+  const totalConNuevoPrestamo = (Number(acumuladoActual) || 0) + montoBase;
+
+  // 2. BLOQUEO MULTI-SEDE: Excede el máximo acumulado de S/ 10,000
+  if (totalConNuevoPrestamo > 10000) {
+    const disponible = 10000 - (Number(acumuladoActual) || 0);
     throw new Error(
-      `El cliente excede el limite maximo de S/ 10,000. Acumulado actual: S/ ${acumuladoActual}.`
+      `Operación Rechazada: El cliente tiene S/ ${acumuladoActual} prestados entre distintas sedes. Monto máximo disponible: S/ ${disponible.toFixed(2)}.`
     );
   }
 
-  // 2. Calcular interes del 30%
+  // 3. Registrar Préstamo
   const tasaInteres = 30.0;
-  const montoTotalConInteres = montoBase * (1 + tasaInteres / 100);
+  const montoTotalConInteres = montoBase * 1.30;
   const montoCuotaMensual = Number((montoTotalConInteres / plazoMeses).toFixed(2));
 
-  // 3. Crear Préstamo
   const { data: prestamo, error: errPrestamo } = await supabase
     .from('prestamos')
     .insert([
@@ -57,6 +58,7 @@ export async function registrarPrestamo({
         tasa_interes: tasaInteres,
         monto_total_con_interes: montoTotalConInteres,
         plazo_meses: plazoMeses,
+        caja_id: cajaId,
       },
     ])
     .select()
@@ -64,21 +66,18 @@ export async function registrarPrestamo({
 
   if (errPrestamo) throw errPrestamo;
 
-  // Si con este préstamo alcanza o llega exactamente a 10,000 soles, marcar cliente como sospechoso
-  if (nuevoTotal >= 10000) {
-    await supabase
-      .from('clientes')
-      .update({ es_sospechoso: true })
-      .eq('id', clienteId);
+  // Marcar reporte sospechoso si alcanza exactamente los S/ 10,000 acumulados
+  if (totalConNuevoPrestamo >= 10000) {
+    await supabase.from('clientes').update({ es_sospechoso: true }).eq('id', clienteId);
   }
 
-  // 4. Generar Cronograma de Cuotas
+  // 4. Generar Cronograma
   const cuotas = [];
   const fechaActual = new Date();
 
   for (let i = 1; i <= plazoMeses; i++) {
     const fechaVencimiento = new Date(fechaActual);
-    fechaVencimiento.setMonth(fechaVencimiento.getMonth() + i);
+    fechaVencimiento.setDate(fechaVencimiento.getDate() + (30 * i)); // Regla exacta de periodos de 30 dias
 
     cuotas.push({
       prestamo_id: prestamo.id,
@@ -94,15 +93,6 @@ export async function registrarPrestamo({
   if (errCuotas) throw errCuotas;
 
   return prestamo;
-}
-
-export interface RegistrarPagoSplitParams {
-  cuotaId: string;
-  metodo1: string;
-  monto1: number;
-  metodo2?: string;
-  monto2?: number;
-  referencia?: string;
 }
 
 /**

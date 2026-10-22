@@ -5,12 +5,14 @@ import { supabase } from '@/lib/supabase';
 import NuevoPrestamoForm from '@/components/NuevoPrestamoForm';
 import CobroSplitModal from '@/components/CobroSplitModal';
 import LoginForm from '@/components/LoginForm';
+import CajaControlModal from '@/components/CajaControlModal';
 
 const SEDES = ['Chimbote', 'Trujillo', 'Chiclayo', 'Tumbes', 'Piura'] as const;
 
 export default function HomePage() {
   const [darkMode, setDarkMode] = useState(true);
   const [cajeroActual, setCajeroActual] = useState<any | null>(null);
+  const [cajaActiva, setCajaActiva] = useState<any | null>(null);
   const [tabActiva, setTabActiva] = useState<'empresas' | 'prestamos'>('empresas');
 
   const [clientes, setClientes] = useState<any[]>([]);
@@ -23,17 +25,30 @@ export default function HomePage() {
   const [cuotaACobrar, setCuotaACobrar] = useState<any | null>(null);
   const [verModalNuevo, setVerModalNuevo] = useState(false);
 
-  // Formulario
+  // Formulario de Afiliación con API SUNAT
+  const [rucInput, setRucInput] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
-  const [ruc, setRuc] = useState('');
   const [sede, setSede] = useState<typeof SEDES[number]>('Trujillo');
   const [repNombre, setRepNombre] = useState('');
   const [repDni, setRepDni] = useState('');
   const [repTelefono, setRepTelefono] = useState('');
+  const [consultandoSunat, setConsultandoSunat] = useState(false);
 
   const cargarClientes = async () => {
     const { data } = await supabase.from('vista_resumen_cliente').select('*');
     if (data) setClientes(data);
+  };
+
+  const cargarCajaActiva = async (cajeroId: string) => {
+    const { data } = await supabase
+      .from('cajas')
+      .select('*')
+      .eq('cajero_id', cajeroId)
+      .eq('estado', 'Abierta')
+      .order('fecha_apertura', { ascending: false })
+      .maybeSingle();
+
+    setCajaActiva(data || null);
   };
 
   const cargarHistorialGeneral = async () => {
@@ -76,20 +91,41 @@ export default function HomePage() {
 
   useEffect(() => {
     if (cajeroActual) {
+      cargarCajaActiva(cajeroActual.id);
       cargarClientes();
       cargarHistorialGeneral();
+      setSede(cajeroActual.sede);
     }
   }, [cajeroActual]);
 
+  // Consulta automática a la API de SUNAT al ingresar 11 dígitos de RUC
+  const consultarSunatApi = async (ruc: string) => {
+    if (ruc.length !== 11) return;
+    setConsultandoSunat(true);
+
+    try {
+      const res = await fetch(`/api/ruc?ruc=${ruc}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRazonSocial(data.razonSocial || '');
+        setRepNombre(data.representanteNombre || '');
+      }
+    } catch (e) {
+      console.error('Error al consultar SUNAT', e);
+    } finally {
+      setConsultandoSunat(false);
+    }
+  };
+
   const handleCrearCliente = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!razonSocial || !ruc || !repNombre || !repDni) return;
+    if (!razonSocial || !rucInput || !repNombre || !repDni) return;
 
     await supabase.from('clientes').insert([
       {
         nombre_o_razon_social: razonSocial,
-        documento_identidad: ruc,
-        ruc,
+        documento_identidad: rucInput,
+        ruc: rucInput,
         sede,
         representante_nombre: repNombre,
         representante_dni: repDni,
@@ -98,14 +134,13 @@ export default function HomePage() {
     ]);
 
     setRazonSocial('');
-    setRuc('');
+    setRucInput('');
     setRepNombre('');
     setRepDni('');
     setRepTelefono('');
     cargarClientes();
   };
 
-  // Filtro en tiempo real por búsqueda
   const clientesFiltrados = clientes.filter((c) => {
     const q = busqueda.toLowerCase().trim();
     return (
@@ -116,7 +151,6 @@ export default function HomePage() {
     );
   });
 
-  // Métricas del Historial General
   const totalPrestamosCount = todosLosPrestamos.length;
   const prestamosCompletados = todosLosPrestamos.filter((p) => {
     const cuotasP = p.cuotas || [];
@@ -161,7 +195,7 @@ export default function HomePage() {
         <div>
           <h1 className="text-2xl font-bold">Sistema de Préstamos Presenciales</h1>
           <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-            Cajero en turno: <strong className="text-blue-500">{cajeroActual.nombre_completo}</strong> (DNI: {cajeroActual.dni}) | Sede: <span className="font-bold text-green-500">{cajeroActual.sede}</span>
+            Cajero en turno: <strong className="text-blue-500">{cajeroActual.nombre_completo}</strong> (DNI: {cajeroActual.dni}) | Sede Operativa: <span className="font-bold text-green-500">{cajeroActual.sede}</span>
           </p>
         </div>
 
@@ -185,6 +219,15 @@ export default function HomePage() {
         </div>
       </header>
 
+      {/* Módulo de Apertura / Cierre de Caja Obligatorio */}
+      <CajaControlModal
+        cajeroId={cajeroActual.id}
+        sede={cajeroActual.sede}
+        cajaActiva={cajaActiva}
+        darkMode={darkMode}
+        onActualizarCaja={(caja) => setCajaActiva(caja)}
+      />
+
       {/* Menú de Pestañas Superior */}
       <div className="flex border-b border-gray-700 space-x-2">
         <button
@@ -197,7 +240,7 @@ export default function HomePage() {
               : 'text-gray-400 hover:text-gray-200 border-transparent'
           }`}
         >
-          🏢 Gestión de Empresas
+          🏢 Gestión de Empresas (Cobranza y Préstamos)
         </button>
         <button
           onClick={() => setTabActiva('prestamos')}
@@ -209,27 +252,23 @@ export default function HomePage() {
               : 'text-gray-400 hover:text-gray-200 border-transparent'
           }`}
         >
-          💳 Historial General de Préstamos
+          💳 Historial General Multi-Sede
         </button>
       </div>
 
-      {/* VISTA 1: EMPRESAS Y DETALLE */}
       {tabActiva === 'empresas' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Columna Izquierda: Buscador, Registro y Lista */}
           <section
             className={`p-5 rounded-lg shadow-sm border space-y-4 ${
               darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
             }`}
           >
             <div className="space-y-2">
-              <h2 className="text-lg font-semibold">Empresas Afiliadas</h2>
-              
-              {/* BARRA DE BÚSQUEDA EN TIEMPO REAL */}
+              <h2 className="text-lg font-semibold">Búsqueda / Cobro por DNI o RUC</h2>
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="🔍 Buscar por Empresa, RUC, Representante o DNI..."
+                  placeholder="🔍 Escribe DNI del Representante, RUC o Empresa..."
                   value={busqueda}
                   onChange={(e) => setBusqueda(e.target.value)}
                   className={`w-full p-2.5 pl-3 border rounded-lg text-sm font-medium transition-all ${inputStyle}`}
@@ -239,31 +278,31 @@ export default function HomePage() {
                     onClick={() => setBusqueda('')}
                     className="absolute right-3 top-2.5 text-xs text-gray-400 hover:text-gray-200"
                   >
-                    ✖ Limpiar
+                    ✖
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Formulario de Afiliación */}
+            {/* Formulario con Integración SUNAT */}
             <form onSubmit={handleCrearCliente} className="space-y-2 border-t pt-3 border-b pb-4 text-sm border-gray-500/20">
-              <p className="text-xs font-bold text-blue-500 uppercase">Afiliar Nueva Empresa</p>
-              <input
-                type="text"
-                placeholder="Razón Social / Empresa"
-                value={razonSocial}
-                onChange={(e) => setRazonSocial(e.target.value)}
-                className={`w-full p-2 border rounded-md font-medium ${inputStyle}`}
-                required
-              />
+              <p className="text-xs font-bold text-blue-500 uppercase flex justify-between">
+                <span>Afiliar Empresa SUNAT</span>
+                {consultandoSunat && <span className="animate-pulse text-amber-400">Consultando SUNAT...</span>}
+              </p>
+              
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
                   placeholder="RUC (11 dígitos)"
                   maxLength={11}
-                  value={ruc}
-                  onChange={(e) => setRuc(e.target.value)}
-                  className={`w-full p-2 border rounded-md font-medium ${inputStyle}`}
+                  value={rucInput}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setRucInput(v);
+                    if (v.length === 11) consultarSunatApi(v);
+                  }}
+                  className={`w-full p-2 border rounded-md font-bold ${inputStyle}`}
                   required
                 />
                 <select
@@ -273,7 +312,7 @@ export default function HomePage() {
                 >
                   {SEDES.map((s) => (
                     <option key={s} value={s} className={darkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-900'}>
-                      {s}
+                      Sede {s}
                     </option>
                   ))}
                 </select>
@@ -281,16 +320,26 @@ export default function HomePage() {
 
               <input
                 type="text"
-                placeholder="Nombre del Encargado/Dueño"
+                placeholder="Razón Social (Autocompletado SUNAT)"
+                value={razonSocial}
+                onChange={(e) => setRazonSocial(e.target.value)}
+                className={`w-full p-2 border rounded-md font-medium ${inputStyle}`}
+                required
+              />
+
+              <input
+                type="text"
+                placeholder="Representante Legal Oficial"
                 value={repNombre}
                 onChange={(e) => setRepNombre(e.target.value)}
                 className={`w-full p-2 border rounded-md font-medium ${inputStyle}`}
                 required
               />
+
               <div className="grid grid-cols-2 gap-2">
                 <input
                   type="text"
-                  placeholder="DNI (8 dígitos)"
+                  placeholder="DNI Rep. (8 dígitos)"
                   maxLength={8}
                   value={repDni}
                   onChange={(e) => setRepDni(e.target.value)}
@@ -308,16 +357,17 @@ export default function HomePage() {
 
               <button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-md font-bold mt-1 transition-colors"
+                disabled={!cajaActiva}
+                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 text-white p-2 rounded-md font-bold mt-1 transition-colors"
               >
                 + Registrar Afiliación
               </button>
             </form>
 
-            {/* Listado Filtrado */}
+            {/* Lista Filtrada para Cobro Multi-Sede */}
             <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
               {clientesFiltrados.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center py-4">No se encontraron empresas coincidentes.</p>
+                <p className="text-xs text-gray-400 text-center py-4">No se encontraron registros coincidentes.</p>
               ) : (
                 clientesFiltrados.map((c) => {
                   const esSospechoso = c.requiere_reporte_sospechoso;
@@ -342,7 +392,7 @@ export default function HomePage() {
                         <div>
                           <p className="font-bold text-sm">{c.nombre_o_razon_social}</p>
                           <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            RUC: {c.ruc} | Sede: <strong>{c.sede}</strong>
+                            RUC: {c.ruc} | Sede Origen: <strong>{c.sede}</strong>
                           </p>
                           <p className="text-xs text-blue-400 font-semibold mt-1">
                             Rep: {c.representante_nombre} (DNI: {c.representante_dni})
@@ -361,11 +411,9 @@ export default function HomePage() {
             </div>
           </section>
 
-          {/* Columna Derecha: Ficha de Información de la Empresa + Operaciones */}
           <section className="lg:col-span-2 space-y-6">
             {clienteSeleccionado ? (
               <>
-                {/* FICHA TÉCNICA Y DATOS DEL REPRESENTANTE */}
                 <div
                   className={`p-6 rounded-lg shadow-sm border space-y-4 ${
                     darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
@@ -374,7 +422,7 @@ export default function HomePage() {
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b pb-4 border-gray-500/20 gap-3">
                     <div>
                       <span className="bg-blue-600/20 text-blue-400 text-xs font-bold px-2.5 py-1 rounded-md uppercase">
-                        Sede {clienteSeleccionado.sede}
+                        Sede Registrada: {clienteSeleccionado.sede}
                       </span>
                       <h2 className="text-2xl font-bold mt-1">{clienteSeleccionado.nombre_o_razon_social}</h2>
                       <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -384,7 +432,7 @@ export default function HomePage() {
 
                     <button
                       onClick={() => setVerModalNuevo(!verModalNuevo)}
-                      disabled={parseFloat(clienteSeleccionado.saldo_disponible_prestamo) <= 0}
+                      disabled={!cajaActiva || parseFloat(clienteSeleccionado.saldo_disponible_prestamo) <= 0}
                       className="bg-green-600 hover:bg-green-700 disabled:bg-gray-500 text-white px-4 py-2 rounded-md text-sm font-bold transition-colors"
                     >
                       {verModalNuevo ? 'Cerrar Formulario' : '+ Nuevo Préstamo'}
@@ -393,27 +441,28 @@ export default function HomePage() {
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                     <div className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-900/50 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-                      <p className="text-xs font-bold text-blue-400 uppercase mb-1">👤 Datos del Representante / Encargado</p>
+                      <p className="text-xs font-bold text-blue-400 uppercase mb-1">👤 Representante Legal (Habilitado para Cobro Multi-Sede)</p>
                       <p><strong>Nombre:</strong> {clienteSeleccionado.representante_nombre}</p>
                       <p><strong>DNI:</strong> {clienteSeleccionado.representante_dni}</p>
                       <p><strong>Teléfono:</strong> {clienteSeleccionado.representante_telefono || 'No registrado'}</p>
                     </div>
 
                     <div className={`p-3 rounded-lg border ${darkMode ? 'bg-gray-900/50 border-gray-700' : 'bg-gray-50 border-gray-200'}`}>
-                      <p className="text-xs font-bold text-green-400 uppercase mb-1">📊 Estado Crediticio</p>
+                      <p className="text-xs font-bold text-green-400 uppercase mb-1">📊 Estado Crediticio Consolidado</p>
                       <p><strong>Monto Prestado Total:</strong> S/ {parseFloat(clienteSeleccionado.monto_total_prestado).toFixed(2)}</p>
                       <p><strong>Límite Disponible:</strong> <span className="text-green-400 font-bold">S/ {parseFloat(clienteSeleccionado.saldo_disponible_prestamo).toFixed(2)}</span> / S/ 10,000</p>
                     </div>
                   </div>
                 </div>
 
-                {verModalNuevo && (
+                {verModalNuevo && cajaActiva && (
                   <NuevoPrestamoForm
                     clienteId={clienteSeleccionado.cliente_id}
                     nombreEmpresa={clienteSeleccionado.nombre_o_razon_social}
                     representanteNombre={clienteSeleccionado.representante_nombre}
-                    sede={clienteSeleccionado.sede}
+                    sede={cajeroActual.sede}
                     saldoDisponible={parseFloat(clienteSeleccionado.saldo_disponible_prestamo)}
+                    cajaId={cajaActiva.id}
                     darkMode={darkMode}
                     onSuccess={() => {
                       setVerModalNuevo(false);
@@ -424,13 +473,12 @@ export default function HomePage() {
                   />
                 )}
 
-                {/* Cronograma de Cuotas */}
                 <div
                   className={`p-5 rounded-lg shadow-sm border space-y-4 ${
                     darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
                   }`}
                 >
-                  <h3 className="text-md font-bold">Cronograma de Cuotas del Cliente</h3>
+                  <h3 className="text-md font-bold">Cronograma de Cuotas de la Empresa</h3>
                   {cuotas.length === 0 ? (
                     <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                       La empresa no tiene cuotas activas.
@@ -445,10 +493,10 @@ export default function HomePage() {
                         >
                           <tr>
                             <th className="p-3">Cuota #</th>
-                            <th className="p-3">Vencimiento</th>
+                            <th className="p-3">Vencimiento (30 Días)</th>
                             <th className="p-3">Monto</th>
                             <th className="p-3">Estado</th>
-                            <th className="p-3">Acción</th>
+                            <th className="p-3">Acción (Sede {cajeroActual.sede})</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -477,9 +525,10 @@ export default function HomePage() {
                                 {cuota.estado !== 'Pagado' && (
                                   <button
                                     onClick={() => setCuotaACobrar(cuota)}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1.5 rounded font-semibold transition-colors"
+                                    disabled={!cajaActiva}
+                                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-500 text-white text-xs px-3 py-1.5 rounded font-semibold transition-colors"
                                   >
-                                    Cobrar Cuota
+                                    Cobrar en Sede {cajeroActual.sede}
                                   </button>
                                 )}
                               </td>
@@ -497,17 +546,15 @@ export default function HomePage() {
                   darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-white border-gray-200 text-gray-500'
                 }`}
               >
-                Selecciona una empresa de la lista izquierda para ver su información detallada y gestionar sus cuotas.
+                Busca o selecciona un cliente para gestionar préstamos y cobros presenciales.
               </div>
             )}
           </section>
         </div>
       )}
 
-      {/* VISTA 2: HISTORIAL GENERAL DE PRÉSTAMOS */}
       {tabActiva === 'prestamos' && (
         <div className="space-y-6">
-          {/* Tarjetas de Métricas (KPIs) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className={`p-5 rounded-lg border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
               <p className="text-xs font-bold text-gray-400 uppercase">Total Préstamos Emitidos</p>
@@ -523,7 +570,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Tabla del Historial General */}
           <div
             className={`p-5 rounded-lg shadow-sm border space-y-4 ${
               darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
@@ -543,8 +589,8 @@ export default function HomePage() {
                   >
                     <tr>
                       <th className="p-3">Empresa / RUC</th>
-                      <th className="p-3">Representante</th>
-                      <th className="p-3">Sede</th>
+                      <th className="p-3">Representante Legal</th>
+                      <th className="p-3">Sede Origen</th>
                       <th className="p-3">Monto Base</th>
                       <th className="p-3">Total c/Interés</th>
                       <th className="p-3">Plazo</th>

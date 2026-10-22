@@ -9,6 +9,7 @@ interface Props {
   representanteNombre: string;
   sede: 'Chimbote' | 'Trujillo' | 'Chiclayo' | 'Tumbes' | 'Piura';
   saldoDisponible: number;
+  cajaId: string;
   darkMode: boolean;
   onSuccess: () => void;
 }
@@ -19,6 +20,7 @@ export default function NuevoPrestamoForm({
   representanteNombre,
   sede,
   saldoDisponible,
+  cajaId,
   darkMode,
   onSuccess,
 }: Props) {
@@ -27,13 +29,23 @@ export default function NuevoPrestamoForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const montoTotalConInteres = monto * 1.3;
+  const montoTotalConInteres = monto * 1.30;
   const cuotaMensual = (montoTotalConInteres / (plazo || 1)).toFixed(2);
   const excedeLimite = monto > saldoDisponible;
+
+  // Cálculo de primera cuota exacta a 30 días
+  const hoy = new Date();
+  const primeraCuota = new Date(hoy);
+  primeraCuota.setDate(primeraCuota.getDate() + 30);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!cajaId) {
+      setError('Debes aperturar caja antes de emitir un préstamo.');
+      return;
+    }
 
     if (excedeLimite) {
       setError(`El monto excede el saldo máximo disponible de S/ ${saldoDisponible.toFixed(2)}.`);
@@ -47,6 +59,7 @@ export default function NuevoPrestamoForm({
         sede,
         montoBase: monto,
         plazoMeses: plazo,
+        cajaId,
       });
       onSuccess();
     } catch (err: any) {
@@ -67,16 +80,21 @@ export default function NuevoPrestamoForm({
         darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'
       }`}
     >
-      <div className="border-b pb-3">
-        <h2 className="text-xl font-bold">Nuevo Préstamo - {nombreEmpresa}</h2>
-        <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-          Atendido por: <strong>{representanteNombre}</strong> | Sede:{' '}
-          <span className="font-semibold text-blue-500">{sede}</span>
-        </p>
+      <div className="border-b pb-3 flex justify-between items-start">
+        <div>
+          <h2 className="text-xl font-bold">Nuevo Préstamo - {nombreEmpresa}</h2>
+          <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            Representante Legal: <strong>{representanteNombre}</strong> | Sede:{' '}
+            <span className="font-semibold text-blue-500">{sede}</span>
+          </p>
+        </div>
+        <span className="bg-green-500/20 text-green-400 text-xs font-bold px-2.5 py-1 rounded border border-green-500/30">
+          Caja Vinc. Activa
+        </span>
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border-l-4 border-red-500 p-3 text-red-500 text-sm">
+        <div className="bg-red-500/10 border-l-4 border-red-500 p-3 text-red-500 text-sm font-bold">
           {error}
         </div>
       )}
@@ -138,13 +156,11 @@ export default function NuevoPrestamoForm({
           <strong>Monto Total a Devolver (con 30%):</strong> S/ {montoTotalConInteres.toFixed(2)}
         </p>
         <p>
-          <strong>Valor por Cuota Mensual:</strong> S/ {cuotaMensual} ({plazo} meses)
+          <strong>Valor por Cuota Mensual:</strong> S/ {cuotaMensual} ({plazo} cuotas)
         </p>
-        {monto === saldoDisponible && (
-          <p className="text-amber-500 font-medium mt-1">
-            ⚠️ Al aprobar este monto, la empresa alcanzará el límite total de S/ 10,000 y se reportará internamente como Transacción Sospechosa.
-          </p>
-        )}
+        <p className="text-xs text-blue-400 font-semibold pt-1">
+          📅 Primera cuota vence exactamente a los 30 días: <strong>{primeraCuota.toLocaleDateString('es-PE')}</strong>
+        </p>
       </div>
 
       <button
